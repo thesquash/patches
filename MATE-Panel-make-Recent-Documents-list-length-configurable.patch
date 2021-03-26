@@ -1,0 +1,111 @@
+diff -uprN mate-panel-1.24.1-original/data/org.mate.panel.menubar.gschema.xml.in mate-panel-1.24.1-patched/data/org.mate.panel.menubar.gschema.xml.in
+--- mate-panel-1.24.1-original/data/org.mate.panel.menubar.gschema.xml.in	2020-08-08 12:13:22.000000000 -0400
++++ mate-panel-1.24.1-patched/data/org.mate.panel.menubar.gschema.xml.in	2021-03-26 00:40:54.099895160 -0400
+@@ -50,5 +50,10 @@
+       <summary>Threshold of menu items before submenu is created</summary>
+       <description>Maximum number of menu items (i.e. bookmarks) that are displayed without being put in a submenu.</description>
+     </key>
++    <key name="max-recent-items" type="i">
++      <default>10</default>
++      <summary>Maximum number of recent documents displayed in the Places menu</summary>
++      <description>Maximum number of recent documents that are displayed in the Places menu at a time. If this is set to -1, all known recent documents will be displayed.</description>
++    </key>
+   </schema>
+ </schemalist>
+diff -uprN mate-panel-1.24.1-original/mate-panel/panel-menu-items.c mate-panel-1.24.1-patched/mate-panel/panel-menu-items.c
+--- mate-panel-1.24.1-original/mate-panel/panel-menu-items.c	2020-08-08 12:13:22.000000000 -0400
++++ mate-panel-1.24.1-patched/mate-panel/panel-menu-items.c	2021-03-26 01:13:58.619976798 -0400
+@@ -1025,6 +1025,7 @@ panel_place_menu_item_create_menu (Panel
+ 	char      *name;
+ 	char      *uri;
+ 	GFile     *file;
++        int        recent_items_limit;
+ 
+ 	places_menu = panel_create_menu ();
+ 
+@@ -1070,10 +1071,8 @@ panel_place_menu_item_create_menu (Panel
+ 		gsettings_name = g_settings_get_string (place_item->priv->caja_desktop_settings,
+ 								CAJA_DESKTOP_COMPUTER_ICON_NAME_KEY);
+ 
+-	if (PANEL_GLIB_STR_EMPTY (gsettings_name)) {
+-		g_free (gsettings_name);
++	if (PANEL_GLIB_STR_EMPTY (gsettings_name))
+ 		gsettings_name = g_strdup (_("Computer"));
+-	}
+ 
+ 	panel_menu_items_append_place_item (
+ 			PANEL_ICON_COMPUTER, NULL,
+@@ -1120,8 +1119,12 @@ panel_place_menu_item_create_menu (Panel
+ 						      NULL,
+ 						      FALSE);
+ 
++        recent_items_limit = g_settings_get_int (place_item->priv->menubar_settings,
++						 PANEL_MENU_BAR_MAX_RECENT_ITEMS);
++
+ 	panel_recent_append_documents_menu (places_menu,
+-					    place_item->priv->recent_manager);
++					    place_item->priv->recent_manager,
++                                            recent_items_limit);
+ /* Fix any failures of compiz/other wm's to communicate with gtk for transparency */
+ 	GtkWidget *toplevel = gtk_widget_get_toplevel (places_menu);
+ 	GdkScreen *screen = gtk_widget_get_screen(GTK_WIDGET(toplevel));
+@@ -1380,6 +1383,10 @@ panel_place_menu_item_init (PanelPlaceMe
+ 			"changed::" PANEL_MENU_BAR_MAX_ITEMS_OR_SUBMENU,
+ 			G_CALLBACK (panel_place_menu_item_key_changed),
+ 			G_OBJECT (menuitem));
++        g_signal_connect (menuitem->priv->menubar_settings,
++			"changed::" PANEL_MENU_BAR_MAX_RECENT_ITEMS,
++			G_CALLBACK (panel_place_menu_item_key_changed),
++			G_OBJECT (menuitem));
+ 
+ 	menuitem->priv->recent_manager = gtk_recent_manager_get_default ();
+ 
+diff -uprN mate-panel-1.24.1-original/mate-panel/panel-recent.c mate-panel-1.24.1-patched/mate-panel/panel-recent.c
+--- mate-panel-1.24.1-original/mate-panel/panel-recent.c	2020-08-08 12:13:22.000000000 -0400
++++ mate-panel-1.24.1-patched/mate-panel/panel-recent.c	2021-03-26 01:04:12.855952702 -0400
+@@ -185,7 +185,8 @@ recent_documents_clear_cb (GtkMenuItem
+ 
+ void
+ panel_recent_append_documents_menu (GtkWidget        *top_menu,
+-				    GtkRecentManager *manager)
++				    GtkRecentManager *manager,
++				    int               recent_items_limit)
+ {
+ 	GtkWidget      *recent_menu;
+ 	GtkWidget      *menu_item;
+@@ -200,6 +201,11 @@ panel_recent_append_documents_menu (GtkW
+ 	recent_menu = gtk_recent_chooser_menu_new_for_manager (manager);
+ 	gtk_menu_item_set_submenu (GTK_MENU_ITEM (menu_item), recent_menu);
+ 
++        if (recent_items_limit < -1)
++          recent_items_limit = -1;
++        gtk_recent_chooser_set_limit (GTK_RECENT_CHOOSER (recent_menu),
++                                      recent_items_limit);
++
+ 	g_signal_connect (G_OBJECT (recent_menu), "button_press_event",
+ 			  G_CALLBACK (menu_dummy_button_press_event), NULL);
+ 
+diff -uprN mate-panel-1.24.1-original/mate-panel/panel-recent.h mate-panel-1.24.1-patched/mate-panel/panel-recent.h
+--- mate-panel-1.24.1-original/mate-panel/panel-recent.h	2020-08-08 12:13:22.000000000 -0400
++++ mate-panel-1.24.1-patched/mate-panel/panel-recent.h	2021-03-26 01:03:59.643952158 -0400
+@@ -32,7 +32,8 @@ extern "C" {
+ #endif
+ 
+ void panel_recent_append_documents_menu (GtkWidget        *menu,
+-					 GtkRecentManager *manager);
++					 GtkRecentManager *manager,
++					 int               recent_items_limit);
+ 
+ #ifdef __cplusplus
+ }
+diff -uprN mate-panel-1.24.1-original/mate-panel/panel-schemas.h mate-panel-1.24.1-patched/mate-panel/panel-schemas.h
+--- mate-panel-1.24.1-original/mate-panel/panel-schemas.h	2020-08-08 12:13:22.000000000 -0400
++++ mate-panel-1.24.1-patched/mate-panel/panel-schemas.h	2021-03-26 01:08:11.391962514 -0400
+@@ -66,6 +66,7 @@
+ #define PANEL_MENU_BAR_SHOW_ICON_KEY          "show-icon"
+ #define PANEL_MENU_BAR_ICON_NAME_KEY          "icon-name"
+ #define PANEL_MENU_BAR_MAX_ITEMS_OR_SUBMENU   "max-items-or-submenu"
++#define PANEL_MENU_BAR_MAX_RECENT_ITEMS       "max-recent-items"
+ 
+ /* external schemas */
+ 
