@@ -1,0 +1,97 @@
+diff -uprN mate-panel-1.24.0/applets/clock/calendar-window.c mate-panel-1.24.0-clock-applet/applets/clock/calendar-window.c
+--- mate-panel-1.24.0/applets/clock/calendar-window.c	2020-02-10 07:16:55.000000000 -0500
++++ mate-panel-1.24.0-clock-applet/applets/clock/calendar-window.c	2021-01-02 19:53:31.476126189 -0500
+@@ -477,7 +477,7 @@ calendar_window_init (CalendarWindow *ca
+ 	gtk_window_set_type_hint (window, GDK_WINDOW_TYPE_HINT_DOCK);
+ 	gtk_window_set_decorated (window, FALSE);
+ 	gtk_window_set_resizable (window, FALSE);
+-	gtk_window_set_default_size (window, 337, -1);
++	gtk_window_set_default_size (window, 356, -1);
+ 	gtk_window_stick (window);
+ 	gtk_window_set_title (window, _("Calendar"));
+ 	gtk_window_set_icon_name (window, CLOCK_ICON);
+diff -uprN mate-panel-1.24.0/applets/clock/clock.c mate-panel-1.24.0-clock-applet/applets/clock/clock.c
+--- mate-panel-1.24.0/applets/clock/clock.c	2020-02-10 07:16:55.000000000 -0500
++++ mate-panel-1.24.0-clock-applet/applets/clock/clock.c	2021-01-02 13:11:12.336047775 -0500
+@@ -134,6 +134,7 @@ struct _ClockData {
+         GtkWidget *seconds_spin;
+         GtkWidget *set_time_button;
+ 
++        GtkWidget *cities_scrolled_window;
+         GtkListStore *cities_store;
+         GtkWidget *cities_section;
+         GtkWidget *map_widget;
+@@ -983,7 +984,7 @@ add_to_group (GtkWidget *child, gpointer
+ {
+         GtkSizeGroup *group = data;
+ 
+-        gtk_size_group_add_widget (group, child);
++        //gtk_size_group_add_widget (group, child);
+ }
+ 
+ static void
+@@ -1129,6 +1130,8 @@ location_tile_need_clock_format_cb(Clock
+ static void
+ create_cities_section (ClockData *cd)
+ {
++        GtkScrolledWindow *sw;
++
+         GList *node;
+         ClockLocationTile *city;
+         GList *cities;
+@@ -1138,10 +1141,21 @@ create_cities_section (ClockData *cd)
+                 cd->cities_section = NULL;
+         }
+ 
++        if (cd->cities_scrolled_window) {
++                gtk_widget_destroy (cd->cities_scrolled_window);
++                cd->cities_scrolled_window = NULL;
++        }
++
+         if (cd->location_tiles)
+                 g_list_free (cd->location_tiles);
+         cd->location_tiles = NULL;
+ 
++        cd->cities_scrolled_window = gtk_scrolled_window_new (NULL, NULL);
++        gtk_container_set_border_width (GTK_CONTAINER (cd->cities_scrolled_window), 0);
++        sw = GTK_SCROLLED_WINDOW (cd->cities_scrolled_window);
++        gtk_scrolled_window_set_policy (sw, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
++        gtk_scrolled_window_set_propagate_natural_height (sw, TRUE);
++
+         cd->cities_section = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+         gtk_container_set_border_width (GTK_CONTAINER (cd->cities_section), 0);
+ 
+@@ -1180,10 +1194,13 @@ create_cities_section (ClockData *cd)
+ 
+         g_list_free (node);
+ 
++        gtk_container_add (GTK_CONTAINER (cd->cities_scrolled_window),
++                           cd->cities_section);
++
+         gtk_box_pack_end (GTK_BOX (cd->clock_vbox),
+-                          cd->cities_section, FALSE, FALSE, 0);
++                          cd->cities_scrolled_window, FALSE, FALSE, 0);
+ 
+-        gtk_widget_show_all (cd->cities_section);
++        gtk_widget_show_all (cd->cities_scrolled_window);
+ }
+ 
+ static GList *
+diff -uprN mate-panel-1.24.0/applets/clock/clock.ui mate-panel-1.24.0-clock-applet/applets/clock/clock.ui
+--- mate-panel-1.24.0/applets/clock/clock.ui	2020-02-10 07:16:55.000000000 -0500
++++ mate-panel-1.24.0-clock-applet/applets/clock/clock.ui	2021-01-02 13:00:53.184022304 -0500
+@@ -583,12 +583,13 @@
+                     <property name="visible">True</property>
+                     <property name="can_focus">False</property>
+                     <property name="spacing">6</property>
++                    <property name="vexpand">True</property>
+                     <child>
+                       <object class="GtkScrolledWindow" id="scrolledwindow10">
+                         <property name="visible">True</property>
+                         <property name="can_focus">True</property>
+                         <property name="hscrollbar_policy">never</property>
+-                        <property name="vscrollbar_policy">never</property>
++                        <property name="vscrollbar_policy">automatic</property>
+                         <property name="shadow_type">in</property>
+                         <child>
+                           <object class="GtkTreeView" id="cities_list">
