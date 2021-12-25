@@ -1,0 +1,155 @@
+# Give user more control over extra pane
+#
+# This patch does two things:
+#
+# 1. It works around a GTK+ bug wherein, when the extra pane is open and the
+#    user navigates between directories, the extra pane changes size seemingly
+#    randomly.
+#
+# 2. It adds two new preferences to store the position of the extra pane and
+#    whether the extra pane is visible, so that the preferences are then
+#    applied to all windows created in the future.
+
+diff -uprN caja-1.24.1-original/libcaja-private/caja-global-preferences.h caja-1.24.1-patched/libcaja-private/caja-global-preferences.h
+--- caja-1.24.1-original/libcaja-private/caja-global-preferences.h	2021-03-25 05:00:48.000000000 -0400
++++ caja-1.24.1-patched/libcaja-private/caja-global-preferences.h	2021-12-23 23:17:35.508151448 -0500
+@@ -106,6 +106,7 @@ typedef enum
+ #define CAJA_PREFERENCES_ALWAYS_USE_LOCATION_ENTRY			"always-use-location-entry"
+ 
+ /* Which views should be displayed for new windows */
++#define CAJA_WINDOW_STATE_START_WITH_EXTRA_PANE		 		"start-with-extra-pane"
+ #define CAJA_WINDOW_STATE_START_WITH_LOCATION_BAR			"start-with-location-bar"
+ #define CAJA_WINDOW_STATE_START_WITH_STATUS_BAR				"start-with-status-bar"
+ #define CAJA_WINDOW_STATE_START_WITH_SIDEBAR		 		"start-with-sidebar"
+@@ -113,6 +114,7 @@ typedef enum
+ #define CAJA_WINDOW_STATE_SIDE_PANE_VIEW                    "side-pane-view"
+ #define CAJA_WINDOW_STATE_GEOMETRY 	"geometry"
+ #define CAJA_WINDOW_STATE_MAXIMIZED        "maximized"
++#define CAJA_WINDOW_STATE_EXTRA_PANE_POSITION  					"extra-pane-position"
+ #define CAJA_WINDOW_STATE_SIDEBAR_WIDTH  					"sidebar-width"
+ 
+ /* Sorting order */
+diff -uprN caja-1.24.1-original/libcaja-private/org.mate.caja.gschema.xml caja-1.24.1-patched/libcaja-private/org.mate.caja.gschema.xml
+--- caja-1.24.1-original/libcaja-private/org.mate.caja.gschema.xml	2021-03-25 05:00:48.000000000 -0400
++++ caja-1.24.1-patched/libcaja-private/org.mate.caja.gschema.xml	2021-12-23 23:13:36.068141598 -0500
+@@ -438,11 +438,21 @@
+       <summary>Whether the navigation window should be maximized.</summary>
+       <description>Whether the navigation window should be maximized by default.</description>
+     </key>
++    <key name="extra-pane-position" type="i">
++      <default>-1</default>
++      <summary>Default position of the extra pane</summary>
++      <description>The default position (in pixels) of the extra pane in new windows, relative to the left side (or right side in right-to-left mode) of the navigation window.  A greater value here will allocate more space for the primary pane and less space for the extra pane.  A value of -1 here will split the window evenly in half between the two panes.</description>
++    </key>
+     <key name="sidebar-width" type="i">
+       <default>148</default>
+       <summary>Width of the side pane</summary>
+       <description>The default width of the side pane in new windows.</description>
+     </key>
++    <key name="start-with-extra-pane" type="b">
++      <default>true</default>
++      <summary>Show extra pane by default in new windows</summary>
++      <description>If set to true, newly opened windows will have the extra pane visible.</description>
++    </key>
+     <key name="start-with-toolbar" type="b">
+       <default>true</default>
+       <summary>Show toolbar in new windows</summary>
+diff -uprN caja-1.24.1-original/src/caja-navigation-window.c caja-1.24.1-patched/src/caja-navigation-window.c
+--- caja-1.24.1-original/src/caja-navigation-window.c	2021-03-25 05:00:48.000000000 -0400
++++ caja-1.24.1-patched/src/caja-navigation-window.c	2021-12-23 23:53:57.060241192 -0500
+@@ -1123,6 +1123,9 @@ caja_navigation_window_show (GtkWidget *
+      * these can be controlled on a per-window basis from View menu items.
+      */
+ 
++    if (g_settings_get_boolean (caja_window_state, CAJA_WINDOW_STATE_START_WITH_EXTRA_PANE))
++        caja_navigation_window_split_view_on (window);
++
+     if (g_settings_get_boolean (caja_window_state, CAJA_WINDOW_STATE_START_WITH_TOOLBAR))
+     {
+         caja_navigation_window_show_toolbar (window);
+@@ -1351,6 +1354,29 @@ create_extra_pane (CajaNavigationWindow
+     return slot;
+ }
+ 
++static void
++extra_pane_position_changed_callback (GtkWidget *widget,
++                                      GParamSpec *pspec,
++                                      gpointer user_data)
++{
++    CajaNavigationWindow *window;
++    gint scale;
++    gint position;
++
++    window = CAJA_NAVIGATION_WINDOW (user_data);
++    scale = gtk_widget_get_scale_factor (widget);
++
++    g_object_get (widget, "position", &position, NULL);
++    position /= scale;
++    if (position != window->details->extra_pane_width)
++    {
++        window->details->extra_pane_width = position;
++        g_settings_set_int (caja_window_state,
++                            CAJA_WINDOW_STATE_EXTRA_PANE_POSITION,
++                            position <= 1 ? 0 : position);
++    }
++}
++
+ void
+ caja_navigation_window_split_view_on (CajaNavigationWindow *window)
+ {
+@@ -1359,6 +1385,8 @@ caja_navigation_window_split_view_on (Ca
+     CajaWindowSlot *slot, *old_active_slot;
+     GFile *location;
+     GtkAction *action;
++    GtkWidget *paned;
++    gint       scale;
+ 
+     win = CAJA_WINDOW (window);
+ 
+@@ -1399,6 +1427,24 @@ caja_navigation_window_split_view_on (Ca
+         caja_navigation_window_pane_hide_location_bar (pane, TRUE);
+     }
+     G_GNUC_END_IGNORE_DEPRECATIONS;
++
++
++    paned = GTK_WIDGET (window->details->split_view_hpane);
++    scale = gtk_widget_get_scale_factor (GTK_WIDGET (window->sidebar));
++    window->details->extra_pane_width =
++        g_settings_get_int (caja_window_state, CAJA_WINDOW_STATE_EXTRA_PANE_POSITION) * scale;
++    if (window->details->extra_pane_width <= 0)
++        window->details->extra_pane_width = gtk_widget_get_allocated_width (paned) / 2;
++    gtk_paned_set_position (GTK_PANED (paned), window->details->extra_pane_width);
++
++
++    g_signal_connect (paned,
++                      "notify::position",
++                      G_CALLBACK (extra_pane_position_changed_callback),
++                      window);
++
++
++    g_settings_set_boolean (caja_window_state, CAJA_WINDOW_STATE_START_WITH_EXTRA_PANE, TRUE);
+ }
+ 
+ void
+@@ -1428,6 +1474,8 @@ caja_navigation_window_split_view_off (C
+ 
+     caja_navigation_window_update_show_hide_menu_items (window);
+     caja_navigation_window_update_split_view_actions_sensitivity (window);
++
++    g_settings_set_boolean (caja_window_state, CAJA_WINDOW_STATE_START_WITH_EXTRA_PANE, FALSE);
+ }
+ 
+ gboolean
+diff -uprN caja-1.24.1-original/src/caja-window-private.h caja-1.24.1-patched/src/caja-window-private.h
+--- caja-1.24.1-original/src/caja-window-private.h	2021-03-25 05:00:48.000000000 -0400
++++ caja-1.24.1-patched/src/caja-window-private.h	2021-12-23 23:35:19.900195235 -0500
+@@ -99,6 +99,9 @@ struct _CajaNavigationWindowPrivate
+ 
+     GtkSizeGroup *header_size_group;
+ 
++    /* Extra Pane */
++    int extra_pane_width;
++
+     /* Side Pane */
+     int side_pane_width;
+     CajaSidebar *current_side_panel;
