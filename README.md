@@ -1,2 +1,2 @@
-# mate-patches
-A set of preliminary, publicly-accessible patches for popular MATE applications
+# Miscellaneous patches to programs and libraries
+This is an ad-hoc set of my own patches that I've written to change the behavior of programs, fix bugs, and so on.  At some point or another, I have either contributed these patches upstream, to another project with more specific goals, or have tried one of the first two at least.  If you want to find patches to MATE or GTK+ applications, for functionality that may not be officially available yet, check here first!  Maybe I have what you need.
