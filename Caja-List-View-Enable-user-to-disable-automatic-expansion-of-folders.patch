@@ -1,0 +1,138 @@
+# List View:  Enable user to disable automatic expansion of folders
+#
+# By default (and always in the past) in List View mode, when the user
+# starts dragging a file and hovers the file over a folder, after a short
+# delay the folder will be opened automatically.  This "hands-free folder
+# expansion" is useful if the user intended to drag the file into a
+# subdirectory of the folder over which they hovered.
+#
+# However, some users apparently start dragging files and then hold the
+# mouse pointer still while they are enumerating the list of possible
+# detinations for the file.  As such, some users will accidentally expand
+# one or more folders which they did not intend to expand, simply because
+# they hovered over the folder, and closing the folder back up is not
+# easy while they are still dragging files.  This leaves the user in a
+# compromising situation, and leads to users having to move (and think)
+# very fast at all times, resulting in elevated user stress.
+#
+# This patch gives the user the choice of which behavior they prefer.
+# A new option has been added to the File Management Preferences dialog:
+# Under the "Views" tab, under the "Defaults" -> "List View" section,
+# there is now an option "Automatically expand folders when files are
+# dragged over them" which chooses between the two behaviors.  As was
+# always the case prior to the application of this patch, this option
+# is enabled by default, so the "original" (former) behavior is used
+# by default -- but the user can uncheck this option and get the latter
+# result.
+#
+# This patch was originally created for @tatanka of the Ubuntu MATE
+# Community, as one of three patches taken by @tatanka to be "Christmas
+# presents".
+
+diff -uprN caja-1.26.0-original/libcaja-private/caja-global-preferences.h caja-1.26.0-patched/libcaja-private/caja-global-preferences.h
+--- caja-1.26.0-original/libcaja-private/caja-global-preferences.h	2021-08-04 09:10:30.000000000 -0400
++++ caja-1.26.0-patched/libcaja-private/caja-global-preferences.h	2022-01-11 20:36:34.632006155 -0500
+@@ -163,6 +163,7 @@ typedef enum
+ #define CAJA_PREFERENCES_LIST_VIEW_DEFAULT_ZOOM_LEVEL		"default-zoom-level"
+ #define CAJA_PREFERENCES_LIST_VIEW_DEFAULT_VISIBLE_COLUMNS	"default-visible-columns"
+ #define CAJA_PREFERENCES_LIST_VIEW_DEFAULT_COLUMN_ORDER		"default-column-order"
++#define CAJA_PREFERENCES_LIST_VIEW_EXPAND_HOVERED_FOLDERS_WHILE_DRAGGING "expand-hovered-folders-while-dragging"
+ 
+     enum
+     {
+diff -uprN caja-1.26.0-original/libcaja-private/caja-tree-view-drag-dest.c caja-1.26.0-patched/libcaja-private/caja-tree-view-drag-dest.c
+--- caja-1.26.0-original/libcaja-private/caja-tree-view-drag-dest.c	2021-08-04 09:10:30.000000000 -0400
++++ caja-1.26.0-patched/libcaja-private/caja-tree-view-drag-dest.c	2022-01-11 20:59:42.140063234 -0500
+@@ -43,6 +43,7 @@
+ #include "caja-link.h"
+ #include "caja-marshal.h"
+ #include "caja-debug-log.h"
++#include "caja-global-preferences.h"
+ 
+ #define AUTO_SCROLL_MARGIN 20
+ 
+@@ -556,7 +557,9 @@ drag_motion_callback (GtkWidget *widget,
+         {
+             remove_expand_timeout (dest);
+         }
+-        if (dest->details->expand_id == 0 && drop_path != NULL)
++        if (dest->details->expand_id == 0 && drop_path != NULL &&
++            g_settings_get_boolean (caja_list_view_preferences,
++                                    CAJA_PREFERENCES_LIST_VIEW_EXPAND_HOVERED_FOLDERS_WHILE_DRAGGING))
+         {
+             gtk_tree_model_get_iter (model, &drop_iter, drop_path);
+             if (gtk_tree_model_iter_has_child (model, &drop_iter))
+diff -uprN caja-1.26.0-original/libcaja-private/org.mate.caja.gschema.xml caja-1.26.0-patched/libcaja-private/org.mate.caja.gschema.xml
+--- caja-1.26.0-original/libcaja-private/org.mate.caja.gschema.xml	2021-08-04 09:10:30.000000000 -0400
++++ caja-1.26.0-patched/libcaja-private/org.mate.caja.gschema.xml	2022-01-11 12:14:05.812229498 -0500
+@@ -355,6 +355,22 @@
+       <summary>Default column order in the list view</summary>
+       <description>Default column order in the list view.</description>
+     </key>
++    <key name="expand-hovered-folders-while-dragging" type="b">
++      <default>true</default>
++      <summary>Expand hovered folders while dragging files over them</summary>
++      <description>If this key is set to true, if the user begins dragging a
++         file or files and then holds the files above a folder, the folder will
++         be automatically expanded.  This then allows the user to drag the
++         files into a subfolder without having to expand the parent folder
++         ahead of time.
++
++         If this key is set to false, a folder will not be automatically
++         expanded when the user drags and holds files over the folder.  Some
++         users may prefer this latter behavior, as some users may stop and hold
++         the mouse pointer over a folder while they are enumerating where to
++         drag a file, rather than intending to drag the file into a subfolder.
++      </description>
++    </key>
+   </schema>
+ 
+   <schema id="org.mate.caja.sidebar-panels" path="/org/mate/caja/sidebar-panels/" gettext-domain="caja">
+diff -uprN caja-1.26.0-original/src/caja-file-management-properties.c caja-1.26.0-patched/src/caja-file-management-properties.c
+--- caja-1.26.0-original/src/caja-file-management-properties.c	2021-08-04 09:10:30.000000000 -0400
++++ caja-1.26.0-patched/src/caja-file-management-properties.c	2022-01-11 21:03:01.836071449 -0500
+@@ -73,6 +73,7 @@
+ #define CAJA_FILE_MANAGEMENT_PROPERTIES_MEDIA_AUTORUN_NEVER "media_autorun_never_checkbutton"
+ #define CAJA_FILE_MANAGEMENT_PROPERTIES_USE_IEC_UNITS_WIDGET "use_iec_units"
+ #define CAJA_FILE_MANAGEMENT_PROPERTIES_SHOW_ICONS_IN_LIST_VIEW "show_icons_in_list_view"
++#define CAJA_FILE_MANAGEMENT_PROPERTIES_LIST_VIEW_EXPAND_HOVERED_FOLDERS_WHILE_DRAGGING "expand_hovered_folders_while_dragging"
+ 
+ /* int enums */
+ #define CAJA_FILE_MANAGEMENT_PROPERTIES_THUMBNAIL_LIMIT_WIDGET "preview_image_size_combobox"
+@@ -1154,6 +1155,10 @@ caja_file_management_properties_dialog_s
+                        CAJA_FILE_MANAGEMENT_PROPERTIES_SHOW_ICONS_IN_LIST_VIEW,
+                        CAJA_PREFERENCES_SHOW_ICONS_IN_LIST_VIEW);
+ 
++    bind_builder_bool (builder, caja_list_view_preferences,
++                       CAJA_FILE_MANAGEMENT_PROPERTIES_LIST_VIEW_EXPAND_HOVERED_FOLDERS_WHILE_DRAGGING,
++                       CAJA_PREFERENCES_LIST_VIEW_EXPAND_HOVERED_FOLDERS_WHILE_DRAGGING);
++
+     bind_builder_enum (builder, caja_preferences,
+                        CAJA_FILE_MANAGEMENT_PROPERTIES_DEFAULT_VIEW_WIDGET,
+                        CAJA_PREFERENCES_DEFAULT_FOLDER_VIEWER,
+diff -uprN caja-1.26.0-original/src/caja-file-management-properties.ui caja-1.26.0-patched/src/caja-file-management-properties.ui
+--- caja-1.26.0-original/src/caja-file-management-properties.ui	2021-08-04 09:10:30.000000000 -0400
++++ caja-1.26.0-patched/src/caja-file-management-properties.ui	2022-01-11 20:41:48.244019056 -0500
+@@ -797,6 +797,22 @@
+                                 <property name="position">1</property>
+                               </packing>
+                             </child>
++                            <child>
++                              <object class="GtkCheckButton" id="expand_hovered_folders_while_dragging">
++                                <property name="label" translatable="yes">Automatically e_xpand folders when files are dragged over them</property>
++                                <property name="visible">True</property>
++                                <property name="can-focus">True</property>
++                                <property name="receives-default">False</property>
++                                <property name="halign">start</property>
++                                <property name="use-underline">True</property>
++                                <property name="draw-indicator">True</property>
++                              </object>
++                              <packing>
++                                <property name="expand">False</property>
++                                <property name="fill">True</property>
++                                <property name="position">2</property>
++                              </packing>
++                            </child>
+                           </object>
+                           <packing>
+                             <property name="position">2</property>
