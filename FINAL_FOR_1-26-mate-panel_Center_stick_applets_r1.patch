@@ -1,0 +1,1536 @@
+# MATE Panel:  Center-stick support for applets (and better right-stick
+# support, too)
+#
+# Conventionally, the applets on a MATE Panel are positioned relative to the
+# left edge of the panel (if the panel is horizontal) or the top edge (if the
+# panel is vertical).  There has also been some (buggy) support for positioning
+# of applets relative to the right (or bottom) edge of the panel, so that
+# applets on the right side of the panel will stay on the right side even if
+# the user changes screen resolutions or if the panel changes size for some
+# other reason.
+#
+# However, many users want to also place applets at or near the center of their
+# panel(s).  There is no such conventional support for positioning applets
+# relative to the center of the panel, so users have positioned applets near
+# the center of the panel -- but the position recorded is relative to the left
+# side of the panel.  As such, the applets will almost certainly shift over
+# to the left or right slightly if the panel is ever resized, and the user will
+# have to reposition all those centered applets yet again.  This is especially
+# frustrating if the user switches differently-sized monitors on a regular
+# basis!
+#
+# This patch radically revamps the MATE Panel's positioning framework, and
+# deprecates the original "right-stick" feature.  To replace the right-stick
+# feature, this patch instead associates an "edge relativity" setting with
+# each and every panel applet:  An applet can be relative to the start (left/
+# top), end (right/bottom), or center of the panel.  This setting can be
+# changed using DConf/GSettings, using a custom panel layout file, or even
+# by simply dragging the applet to the appropriate place on the panel.
+# (Conventionally, applets are not even right-stuck automatically even when the
+# user drags the applet over to the far right of the panel!)  As a bonus, when
+# the user drags an applet across the center of the panel, the applet will
+# temporarily "stick" to the very center of the panel, to allow the user to
+# very precisely align any applet they wish.
+#
+# Since I created the first patch, several bugs have been fixed and some more
+# backward compatibility was added; the code that is now part of the latest
+# versions of the MATE Panel is different from the code in my original patch.
+# On top of that, after my contributions were accepted into the official MATE
+# Panel repository, it came to my attention that not all applets centered
+# properly with the patch that I contributed -- namely, expanding applets
+# (such as the Window List and the Dock Applet from the Ubuntu MATE project).
+# This patch includes all the changes made to my patch in order for it to be
+# accepted "upstream" -- by the MATE developers themselves -- and also fixes
+# the issue with centering of expanding applets.  I intend to contribute the
+# expanding applet centering fix upstream as well, fairly soon.  I also
+# apologize for not testing this patch thoroughly enough the first time
+# through.
+#
+# This patch has been tested and is known to work with MATE Panel versions
+# 1.26.0, 1.26.1, and 1.26.2.  This patch has been verified NOT to work on
+# versions 1.24.0, 1.24.1 and 1.24.2; there should be another patch in the
+# same directory as this one that is especially for these older versions of
+# the MATE Panel.  It may work on other versions of the panel, though other
+# versions have not been tested yet.
+
+diff -uprN mate-panel-1.26.2-original/data/default.layout mate-panel-1.26.2-patched/data/default.layout
+--- mate-panel-1.26.2-original/data/default.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/default.layout	2022-08-11 22:17:43.516181973 -0400
+@@ -19,7 +19,7 @@ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=top
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+@@ -27,7 +27,7 @@ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=top
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object show-desktop]
+@@ -49,5 +49,5 @@ object-type=applet
+ applet-iid=WnckletFactory::WorkspaceSwitcherApplet
+ toplevel-id=bottom
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+diff -uprN mate-panel-1.26.2-original/data/fedora.layout mate-panel-1.26.2-patched/data/fedora.layout
+--- mate-panel-1.26.2-original/data/fedora.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/fedora.layout	2022-08-11 22:17:43.516181973 -0400
+@@ -40,7 +40,7 @@ object-type=applet
+ applet-iid=GvcAppletFactory::GvcApplet
+ toplevel-id=top
+ position=20
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object notification-area]
+@@ -48,7 +48,7 @@ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=top
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+@@ -56,7 +56,7 @@ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=top
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object show-desktop]
+@@ -78,5 +78,5 @@ object-type=applet
+ applet-iid=WnckletFactory::WorkspaceSwitcherApplet
+ toplevel-id=bottom
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+diff -uprN mate-panel-1.26.2-original/data/linuxmint.layout mate-panel-1.26.2-patched/data/linuxmint.layout
+--- mate-panel-1.26.2-original/data/linuxmint.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/linuxmint.layout	2022-08-11 22:17:43.520181973 -0400
+@@ -29,7 +29,7 @@ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=bottom
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+@@ -37,5 +37,5 @@ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=bottom
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+diff -uprN mate-panel-1.26.2-original/data/mageia.layout mate-panel-1.26.2-patched/data/mageia.layout
+--- mate-panel-1.26.2-original/data/mageia.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/mageia.layout	2022-08-11 22:17:43.520181973 -0400
+@@ -40,7 +40,7 @@ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=top
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+@@ -48,7 +48,7 @@ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=top
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object show-desktop]
+@@ -70,6 +70,6 @@ object-type=applet
+ applet-iid=WnckletFactory::WorkspaceSwitcherApplet
+ toplevel-id=bottom
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+diff -uprN mate-panel-1.26.2-original/data/opensuse.layout mate-panel-1.26.2-patched/data/opensuse.layout
+--- mate-panel-1.26.2-original/data/opensuse.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/opensuse.layout	2022-08-11 22:17:43.520181973 -0400
+@@ -29,7 +29,7 @@ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=bottom
+ position=30
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object workspace-switcher]
+@@ -37,7 +37,7 @@ object-type=applet
+ applet-iid=WnckletFactory::WorkspaceSwitcherApplet
+ toplevel-id=bottom
+ position=20
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+@@ -45,7 +45,7 @@ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=bottom
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object show-desktop]
+@@ -53,5 +53,5 @@ object-type=applet
+ applet-iid=WnckletFactory::ShowDesktopApplet
+ toplevel-id=bottom
+ position=0
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+diff -uprN mate-panel-1.26.2-original/data/org.mate.panel.object.gschema.xml.in mate-panel-1.26.2-patched/data/org.mate.panel.object.gschema.xml.in
+--- mate-panel-1.26.2-original/data/org.mate.panel.object.gschema.xml.in	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/org.mate.panel.object.gschema.xml.in	2022-08-11 22:17:43.520181973 -0400
+@@ -17,8 +17,13 @@
+     </key>
+     <key name="panel-right-stick" type="b">
+       <default>false</default>
+-      <summary>Interpret position relative to bottom/right edge</summary>
+-      <description>If true, the position of the object is interpreted relative to the right (or bottom if vertical) edge of the panel.</description>
++      <summary>Interpret position relative to bottom/right edge (DEPRECATED)</summary>
++      <description>If true, the position of the object is interpreted relative to the right (or bottom if vertical) edge of the panel.  This key is provided only for backward compatibility with old panel layouts; please set the "relative-to-edge" property instead.</description>
++    </key>
++    <key name="relative-to-edge" enum="org.mate.panel.PanelObjectEdgeRelativity">
++      <default>'start'</default>
++      <summary>Whether to interpret the value of the "position" key relative to the start, center or end of the panel</summary>
++      <description>The position of the object is interpreted relative to one edge of the panel.  The value of this key determines whether the object is positioned relative to the start (left/top edge), center, or end (right/bottom edge) of the panel.  Valid values for this key are 'start', 'center', and 'end'.</description>
+     </key>
+     <key name="locked" type="b">
+       <default>false</default>
+diff -uprN mate-panel-1.26.2-original/data/ubuntu.layout mate-panel-1.26.2-patched/data/ubuntu.layout
+--- mate-panel-1.26.2-original/data/ubuntu.layout	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/data/ubuntu.layout	2022-08-11 22:17:43.520181973 -0400
+@@ -26,23 +26,23 @@ menu-path=applications:/
+ object-type=applet
+ applet-iid=NotificationAreaAppletFactory::NotificationArea
+ toplevel-id=top
+-position=30
+-panel-right-stick=true
++position=20
++relative-to-edge=end
+ locked=true
+ 
+ [Object clock]
+ object-type=applet
+ applet-iid=ClockAppletFactory::ClockApplet
+ toplevel-id=top
+-position=20
+-panel-right-stick=true
++position=10
++relative-to-edge=end
+ locked=true
+ 
+ [Object shutdown]
+ action-type=shutdown
+ object-type=action
+-position=10
+-panel-right-stick=true
++position=0
++relative-to-edge=end
+ toplevel-id=top
+ locked=true
+ 
+@@ -65,7 +65,7 @@ object-type=applet
+ applet-iid=WnckletFactory::WorkspaceSwitcherApplet
+ toplevel-id=bottom
+ position=10
+-panel-right-stick=true
++relative-to-edge=end
+ locked=true
+ 
+ [Object trashapplet]
+@@ -74,4 +74,4 @@ position=0
+ toplevel-id=bottom
+ applet-iid=TrashAppletFactory::TrashApplet
+ object-type=applet
+-panel-right-stick=true
++relative-to-edge=end
+diff -uprN mate-panel-1.26.2-original/mate-panel/applet.c mate-panel-1.26.2-patched/mate-panel/applet.c
+--- mate-panel-1.26.2-original/mate-panel/applet.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/applet.c	2022-08-11 22:17:43.520181973 -0400
+@@ -769,12 +769,12 @@ mate_panel_applet_destroy (GtkWidget  *w
+ }
+ 
+ typedef struct {
+-	char            *id;
+-	PanelObjectType  type;
+-	char            *toplevel_id;
+-	int              position;
+-	guint            right_stick : 1;
+-	guint            locked : 1;
++	char                      *id;
++	PanelObjectType            type;
++	char                      *toplevel_id;
++	int                        position;
++	PanelObjectEdgeRelativity  edge_relativity;
++	guint                      locked : 1;
+ } MatePanelAppletToLoad;
+ 
+ /* Each time those lists get both empty,
+@@ -901,9 +901,14 @@ mate_panel_applet_load_idle_handler (gpo
+ 
+ 	panel_widget = panel_toplevel_get_panel_widget (toplevel);
+ 
+-	if (applet->right_stick) {
+-		if (!panel_widget->packed)
+-			applet->position = panel_widget->size - applet->position;
++	if (applet->edge_relativity == PANEL_EDGE_CENTER ||
++	    applet->edge_relativity == PANEL_EDGE_END) {
++		if (!panel_widget->packed) {
++			if (applet->edge_relativity == PANEL_EDGE_CENTER)
++				applet->position = panel_widget->size/2 + applet->position;
++			else if (applet->edge_relativity == PANEL_EDGE_END)
++				applet->position = panel_widget->size - applet->position;
++		}
+ 		else
+ 			applet->position = -1;
+ 	}
+@@ -978,12 +983,12 @@ mate_panel_applet_load_idle_handler (gpo
+ }
+ 
+ void
+-mate_panel_applet_queue_applet_to_load (const char      *id,
+-				   PanelObjectType  type,
+-				   const char      *toplevel_id,
+-				   int              position,
+-				   gboolean         right_stick,
+-				   gboolean         locked)
++mate_panel_applet_queue_applet_to_load (const char                *id,
++					PanelObjectType            type,
++					const char                *toplevel_id,
++					int                        position,
++					PanelObjectEdgeRelativity  edge_relativity,
++					gboolean                   locked)
+ {
+ 	MatePanelAppletToLoad *applet;
+ 
+@@ -994,12 +999,12 @@ mate_panel_applet_queue_applet_to_load (
+ 
+ 	applet = g_new0 (MatePanelAppletToLoad, 1);
+ 
+-	applet->id          = g_strdup (id);
+-	applet->type        = type;
+-	applet->toplevel_id = g_strdup (toplevel_id);
+-	applet->position    = position;
+-	applet->right_stick = right_stick != FALSE;
+-	applet->locked      = locked != FALSE;
++	applet->id              = g_strdup (id);
++	applet->type            = type;
++	applet->toplevel_id     = g_strdup (toplevel_id);
++	applet->position        = position;
++	applet->edge_relativity = edge_relativity;
++	applet->locked          = locked != FALSE;
+ 
+ 	mate_panel_applets_to_load = g_slist_prepend (mate_panel_applets_to_load, applet);
+ }
+@@ -1012,8 +1017,8 @@ mate_panel_applet_compare (const MatePan
+ 
+ 	if ((c = strcmp (a->toplevel_id, b->toplevel_id)))
+ 		return c;
+-	else if (a->right_stick != b->right_stick)
+-		return b->right_stick ? -1 : 1;
++	else if (a->edge_relativity != b->edge_relativity)
++		return a->edge_relativity - b->edge_relativity;
+ 	else
+ 		return a->position - b->position;
+ }
+@@ -1094,12 +1099,12 @@ mate_panel_applet_save_position (AppletI
+ 			    const char *id,
+ 			    gboolean    immediate)
+ {
+-	PanelWidget       *panel_widget;
+-	const char        *toplevel_id;
+-	char              *old_toplevel_id;
+-	gboolean           right_stick;
+-	gboolean           locked;
+-	int                position;
++	PanelWidget               *panel_widget;
++	const char                *toplevel_id;
++	char                      *old_toplevel_id;
++	PanelObjectEdgeRelativity  edge_relativity;
++	gboolean                   locked;
++	int                        position;
+ 
+ 	g_return_if_fail (applet_info != NULL);
+ 
+@@ -1131,7 +1136,7 @@ mate_panel_applet_save_position (AppletI
+ 	g_free (old_toplevel_id);
+ 
+ 	/* Note: changing some properties of the panel that may not be locked down
+-	   (e.g. background) can change the state of the "panel_right_stick" and
++	   (e.g. background) can change the state of the "relative-to-edge" and
+ 	   "position" properties of an applet that may in fact be locked down.
+ 	   So check if these are writable before attempting to write them */
+ 
+@@ -1142,18 +1147,32 @@ mate_panel_applet_save_position (AppletI
+ 	if (locked) {
+ 		/* Until position calculations are refactored to fix the issue of the panel applets
+ 		   getting reordered on resolution changes...
+-		   .. don't save position/right-stick on locked applets */
++		   .. don't save position/relative-to-edge on locked applets */
+ 		return;
+ 	}
+ 
+-	right_stick = panel_is_applet_right_stick (applet_info->widget) ? 1 : 0;
++	edge_relativity = panel_determine_applet_edge_relativity (applet_info->widget);
++	if (g_settings_is_writable (applet_info->settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY) &&
++	    g_settings_get_enum (applet_info->settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY) != edge_relativity)
++		g_settings_set_enum (applet_info->settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY, edge_relativity);
++
++	/*
++	 * If the deprecated `panel-right-stick` setting is set, unset it.
++	 * See the `panel_profile_load_object ()` function in the file
++	 * `panel-profile.c` for a lengthy comment detailing why this is
++	 * done.
++	 */
+ 	if (g_settings_is_writable (applet_info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY) &&
+-	    (g_settings_get_boolean (applet_info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY) ? 1 : 0) != right_stick)
+-		g_settings_set_boolean (applet_info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY, right_stick);
++	    g_settings_get_boolean (applet_info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY))
++		g_settings_set_boolean (applet_info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY, FALSE);
+ 
+ 	position = mate_panel_applet_get_position (applet_info);
+-	if (right_stick && !panel_widget->packed)
+-		position = panel_widget->size - position;
++	if (!panel_widget->packed) {
++		if (edge_relativity == PANEL_EDGE_CENTER)
++			position -= panel_widget->size/2;
++		else if (edge_relativity == PANEL_EDGE_END)
++			position = panel_widget->size - position;
++	}
+ 
+ 	if (g_settings_is_writable (applet_info->settings, PANEL_OBJECT_POSITION_KEY) &&
+ 	    g_settings_get_int (applet_info->settings, PANEL_OBJECT_POSITION_KEY) != position)
+@@ -1370,7 +1389,7 @@ mate_panel_applet_can_freely_move (Apple
+ 	if (!g_settings_is_writable (applet->settings, PANEL_OBJECT_TOPLEVEL_ID_KEY))
+ 		return FALSE;
+ 
+-	if (!g_settings_is_writable (applet->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY))
++	if (!g_settings_is_writable (applet->settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY))
+ 		return FALSE;
+ 
+ 	return TRUE;
+diff -uprN mate-panel-1.26.2-original/mate-panel/applet.h mate-panel-1.26.2-patched/mate-panel/applet.h
+--- mate-panel-1.26.2-original/mate-panel/applet.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/applet.h	2022-08-11 22:17:43.520181973 -0400
+@@ -68,12 +68,12 @@ GSList     *mate_panel_applet_list_apple
+ 
+ void        mate_panel_applet_clean        (AppletInfo    *info);
+ 
+-void mate_panel_applet_queue_applet_to_load (const char      *id,
+-					PanelObjectType  type,
+-					const char      *toplevel_id,
+-					int              position,
+-					gboolean         right_stick,
+-					gboolean         locked);
++void mate_panel_applet_queue_applet_to_load (const char           *id,
++					PanelObjectType            type,
++					const char                *toplevel_id,
++					int                        position,
++					PanelObjectEdgeRelativity  edge_relativity,
++					gboolean                   locked);
+ void mate_panel_applet_load_queued_applets  (gboolean initial_load);
+ gboolean mate_panel_applet_on_load_queue    (const char *id);
+ 
+@@ -97,7 +97,7 @@ void        mate_panel_applet_save_posit
+ int         mate_panel_applet_get_position    (AppletInfo *applet);
+ 
+ /* True if all the keys relevant to moving are writable
+-   (position, toplevel_id, panel_right_stick) */
++   (position, toplevel-id, relative-to-edge) */
+ gboolean    mate_panel_applet_can_freely_move (AppletInfo *applet);
+ 
+ /* True if the locked flag is writable */
+diff -uprN mate-panel-1.26.2-original/mate-panel/drawer.c mate-panel-1.26.2-patched/mate-panel/drawer.c
+--- mate-panel-1.26.2-original/mate-panel/drawer.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/drawer.c	2022-08-11 22:17:43.520181973 -0400
+@@ -627,7 +627,7 @@ panel_drawer_create (PanelToplevel *topl
+ {
+     char *id;
+ 
+-    id = panel_profile_prepare_object (PANEL_OBJECT_DRAWER, toplevel, position, FALSE);
++    id = panel_profile_prepare_object (PANEL_OBJECT_DRAWER, toplevel, position);
+ 
+     panel_drawer_prepare (id, custom_icon, use_custom_icon, tooltip, NULL);
+ 
+@@ -646,7 +646,7 @@ panel_drawer_create_with_id (const char
+     char *id;
+     char *attached_toplevel_id = NULL;
+ 
+-    id = panel_profile_prepare_object_with_id (PANEL_OBJECT_DRAWER, toplevel_id, position, FALSE);
++    id = panel_profile_prepare_object_with_id (PANEL_OBJECT_DRAWER, toplevel_id, position);
+ 
+     panel_drawer_prepare (id, custom_icon, use_custom_icon, tooltip, &attached_toplevel_id);
+ 
+diff -uprN mate-panel-1.26.2-original/mate-panel/launcher.c mate-panel-1.26.2-patched/mate-panel/launcher.c
+--- mate-panel-1.26.2-original/mate-panel/launcher.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/launcher.c	2022-08-11 22:17:43.524181973 -0400
+@@ -1098,8 +1098,7 @@ panel_launcher_create_with_id (const cha
+ 
+ 	id = panel_profile_prepare_object_with_id (PANEL_OBJECT_LAUNCHER,
+ 						   toplevel_id,
+-						   position,
+-						   FALSE);
++						   position);
+ 
+ 	path = g_strdup_printf ("%s%s/", PANEL_OBJECT_PATH, id);
+ 	settings = g_settings_new_with_path (PANEL_OBJECT_SCHEMA, path);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-action-button.c mate-panel-1.26.2-patched/mate-panel/panel-action-button.c
+--- mate-panel-1.26.2-original/mate-panel/panel-action-button.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-action-button.c	2022-08-11 22:17:43.524181973 -0400
+@@ -753,7 +753,7 @@ panel_action_button_create (PanelTopleve
+ 	char        *id;
+ 	char        *path;
+ 
+-	id = panel_profile_prepare_object (PANEL_OBJECT_ACTION, toplevel, position, FALSE);
++	id = panel_profile_prepare_object (PANEL_OBJECT_ACTION, toplevel, position);
+ 
+ 	path = g_strdup_printf (PANEL_OBJECT_PATH "%s/", id);
+ 	settings = g_settings_new_with_path (PANEL_OBJECT_SCHEMA, path);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-applet-frame.c mate-panel-1.26.2-patched/mate-panel/panel-applet-frame.c
+--- mate-panel-1.26.2-original/mate-panel/panel-applet-frame.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-applet-frame.c	2022-08-11 22:17:43.524181973 -0400
+@@ -1072,7 +1072,7 @@ mate_panel_applet_frame_create (PanelTop
+ 
+ 	g_return_if_fail (iid != NULL);
+ 
+-	id = panel_profile_prepare_object (PANEL_OBJECT_APPLET, toplevel, position, FALSE);
++	id = panel_profile_prepare_object (PANEL_OBJECT_APPLET, toplevel, position);
+ 
+ 	path = g_strdup_printf (PANEL_OBJECT_PATH "%s/", id);
+ 	settings = g_settings_new_with_path (PANEL_OBJECT_SCHEMA, path);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel.c mate-panel-1.26.2-patched/mate-panel/panel.c
+--- mate-panel-1.26.2-original/mate-panel/panel.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel.c	2022-08-11 22:17:43.524181973 -0400
+@@ -1405,24 +1405,24 @@ panel_screen_from_panel_widget (PanelWid
+ 	return gtk_window_get_screen (GTK_WINDOW (panel->toplevel));
+ }
+ 
+-gboolean
+-panel_is_applet_right_stick (GtkWidget *applet)
++PanelObjectEdgeRelativity
++panel_determine_applet_edge_relativity (GtkWidget *applet)
+ {
+ 	GtkWidget   *parent;
+ 	PanelWidget *panel_widget;
+ 
+-	g_return_val_if_fail (GTK_IS_WIDGET (applet), FALSE);
++	g_return_val_if_fail (GTK_IS_WIDGET (applet), PANEL_EDGE_START);
+ 
+ 	parent = gtk_widget_get_parent (applet);
+ 
+-	g_return_val_if_fail (PANEL_IS_WIDGET (parent), FALSE);
++	g_return_val_if_fail (PANEL_IS_WIDGET (parent), PANEL_EDGE_START);
+ 
+ 	panel_widget = PANEL_WIDGET (parent);
+ 
+ 	if (!panel_toplevel_get_expand (panel_widget->toplevel))
+-		return FALSE;
++		return PANEL_EDGE_START;
+ 
+-	return panel_widget_is_applet_stuck (panel_widget, applet);
++	return panel_widget_determine_applet_edge_relativity (panel_widget, applet);
+ }
+ 
+ static void
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-enums-gsettings.h mate-panel-1.26.2-patched/mate-panel/panel-enums-gsettings.h
+--- mate-panel-1.26.2-original/mate-panel/panel-enums-gsettings.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-enums-gsettings.h	2022-08-11 22:17:43.524181973 -0400
+@@ -61,6 +61,12 @@ typedef enum {
+ } PanelObjectType;
+ 
+ typedef enum {
++	PANEL_EDGE_START  = 0,
++	PANEL_EDGE_CENTER = 1,
++	PANEL_EDGE_END    = 2
++} PanelObjectEdgeRelativity;
++
++typedef enum {
+ 	PANEL_ACTION_NONE = 0,
+ 	PANEL_ACTION_LOCK,
+ 	PANEL_ACTION_LOGOUT,
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel.h mate-panel-1.26.2-patched/mate-panel/panel.h
+--- mate-panel-1.26.2-original/mate-panel/panel.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel.h	2022-08-11 22:17:43.524181973 -0400
+@@ -26,7 +26,7 @@ PanelData *panel_setup (PanelToplevel *t
+ 
+ GdkScreen *panel_screen_from_panel_widget  (PanelWidget *panel);
+ 
+-gboolean panel_is_applet_right_stick (GtkWidget *applet);
++PanelObjectEdgeRelativity panel_determine_applet_edge_relativity (GtkWidget *applet);
+ 
+ 
+ gboolean panel_check_dnd_target_data (GtkWidget      *widget,
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-layout.c mate-panel-1.26.2-patched/mate-panel/panel-layout.c
+--- mate-panel-1.26.2-original/mate-panel/panel-layout.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-layout.c	2022-08-11 22:17:43.528181973 -0400
+@@ -77,6 +77,7 @@ static PanelLayoutKeyDefinition panel_la
+         { PANEL_OBJECT_TOPLEVEL_ID_KEY,          G_TYPE_STRING   },
+         { PANEL_OBJECT_POSITION_KEY,             G_TYPE_INT      },
+         { PANEL_OBJECT_PANEL_RIGHT_STICK_KEY,    G_TYPE_BOOLEAN  },
++        { PANEL_OBJECT_RELATIVE_TO_EDGE_KEY,     G_TYPE_STRING   },
+         { PANEL_OBJECT_LOCKED_KEY,               G_TYPE_BOOLEAN  },
+         { PANEL_OBJECT_APPLET_IID_KEY,           G_TYPE_STRING   },
+         { PANEL_OBJECT_ATTACHED_TOPLEVEL_ID_KEY, G_TYPE_STRING   },
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-menu-bar.c mate-panel-1.26.2-patched/mate-panel/panel-menu-bar.c
+--- mate-panel-1.26.2-original/mate-panel/panel-menu-bar.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-menu-bar.c	2022-08-11 22:17:43.528181973 -0400
+@@ -379,7 +379,7 @@ void panel_menu_bar_create(PanelToplevel
+ {
+ 	char* id;
+ 
+-	id = panel_profile_prepare_object(PANEL_OBJECT_MENU_BAR, toplevel, position, FALSE);
++	id = panel_profile_prepare_object(PANEL_OBJECT_MENU_BAR, toplevel, position);
+ 	panel_profile_add_to_list(PANEL_GSETTINGS_OBJECTS, id);
+ 	g_free(id);
+ }
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-menu-button.c mate-panel-1.26.2-patched/mate-panel/panel-menu-button.c
+--- mate-panel-1.26.2-original/mate-panel/panel-menu-button.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-menu-button.c	2022-08-11 22:17:43.528181973 -0400
+@@ -975,7 +975,7 @@ panel_menu_button_create (PanelToplevel
+ 	const char  *scheme;
+ 	char        *id;
+ 
+-	id = panel_profile_prepare_object (PANEL_OBJECT_MENU, toplevel, position, FALSE);
++	id = panel_profile_prepare_object (PANEL_OBJECT_MENU, toplevel, position);
+ 
+ 	path = g_strdup_printf (PANEL_OBJECT_PATH "%s/", id);
+ 	settings = g_settings_new_with_path (PANEL_OBJECT_SCHEMA, path);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-profile.c mate-panel-1.26.2-patched/mate-panel/panel-profile.c
+--- mate-panel-1.26.2-original/mate-panel/panel-profile.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-profile.c	2022-08-11 22:17:43.528181973 -0400
+@@ -1184,10 +1184,9 @@ panel_profile_destroy_toplevel (const ch
+ }
+ 
+ char *
+-panel_profile_prepare_object_with_id (PanelObjectType  object_type,
+-				      const char      *toplevel_id,
+-				      int              position,
+-				      gboolean         right_stick)
++panel_profile_prepare_object_with_id (PanelObjectType            object_type,
++				      const char                *toplevel_id,
++				      int                        position)
+ {
+ 	PanelGSettingsKeyType  key_type;
+ 	char              *id;
+@@ -1204,7 +1203,6 @@ panel_profile_prepare_object_with_id (Pa
+ 	g_settings_set_enum (settings, PANEL_OBJECT_TYPE_KEY, object_type);
+ 	g_settings_set_string (settings, PANEL_OBJECT_TOPLEVEL_ID_KEY, toplevel_id);
+ 	g_settings_set_int (settings, PANEL_OBJECT_POSITION_KEY, position);
+-	g_settings_set_boolean (settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY, right_stick);
+ 
+ 	/* Force writing the settings in order to reserve the object ID *now*,
+ 	 * so that a later call to panel_profile_find_new_id() won't find the same
+@@ -1218,15 +1216,13 @@ panel_profile_prepare_object_with_id (Pa
+ }
+ 
+ char *
+-panel_profile_prepare_object (PanelObjectType  object_type,
+-			      PanelToplevel   *toplevel,
+-			      int              position,
+-			      gboolean         right_stick)
++panel_profile_prepare_object (PanelObjectType            object_type,
++			      PanelToplevel             *toplevel,
++			      int                        position)
+ {
+ 	return panel_profile_prepare_object_with_id (object_type,
+ 						     panel_profile_get_toplevel_id (toplevel),
+-						     position,
+-						     right_stick);
++						     position);
+ }
+ 
+ void
+@@ -1244,13 +1240,13 @@ panel_profile_delete_object (AppletInfo
+ static void
+ panel_profile_load_object (char *id)
+ {
+-	PanelObjectType  object_type;
+-	char            *object_path;
+-	char            *toplevel_id;
+-	int              position;
+-	gboolean         right_stick;
+-	gboolean         locked;
+-	GSettings       *settings;
++	PanelObjectType            object_type;
++	char                      *object_path;
++	char                      *toplevel_id;
++	int                        position;
++	PanelObjectEdgeRelativity  edge_relativity;
++	gboolean                   locked;
++	GSettings                 *settings;
+ 
+ 	object_path = g_strdup_printf (PANEL_OBJECT_PATH "%s/", id);
+ 	settings = g_settings_new_with_path (PANEL_OBJECT_SCHEMA, object_path);
+@@ -1258,14 +1254,53 @@ panel_profile_load_object (char *id)
+ 	object_type = g_settings_get_enum (settings, PANEL_OBJECT_TYPE_KEY);
+ 	position = g_settings_get_int (settings, PANEL_OBJECT_POSITION_KEY);
+ 	toplevel_id = g_settings_get_string (settings, PANEL_OBJECT_TOPLEVEL_ID_KEY);
+-	right_stick = g_settings_get_boolean (settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY);
++	edge_relativity = g_settings_get_enum (settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY);
+ 	locked = g_settings_get_boolean (settings, PANEL_OBJECT_LOCKED_KEY);
+ 
++	/* If a panel layout uses the deprecated 'panel-right-stick' property,
++	 * interpret the position of the applet relative to the applet's left
++	 * side, rather than its right like we'd do for end-relative objects.
++	 * The position of an end-relative applet is relative to the *right*
++	 * side of the applet, which makes more sense, IMHO.  The difference
++	 * between these two positioning schemes is on the order of the width
++	 * of the applet; without this backwards-compatible safeguard, many of
++	 * the user's manually-placed right-stuck applets may be moved far out
++	 * of place when they upgrade the panel to this version.
++	 *
++	 * The `panel-right-stick` property will, unfortunately, remain set,
++	 * unless and until the user explicitly moves the applet under the new
++	 * version of the panel.  Keeping the `panel-right-stick` property set
++	 * is necessary since we can't know the equivalent 'edge-relative'
++	 * position to use in the place of the old, 'right-stuck' position;
++	 * after all, we have no idea of the size of the applet when it was
++	 * first positioned on the panel.  (Some applets dynamically change
++	 * size; sure, chances are right-stuck applets will be forced /
++	 * constrained to the very far right side of the panel, but who knows,
++	 * somebody might have set the positions of their applets using a
++	 * layout file or directly via GSettings.)
++	 *
++	 * If the user moves the applets, of course, the applets will be
++	 * repositioned edge-relatively, which is good -- unless the user ever
++	 * downgrades the panel, in which case the applets will be in the wrong
++	 * places.  However, there's a limit to what you can do -- hopefully
++	 * the user will only downgrade the panel if they know what they are
++	 * doing, and the user will have a completely screwed-up panel if they
++	 * *center*-stuck applets and then downgraded.  So the point of this
++	 * hack is to ensure the user experiences a seamless (or nearly
++	 * seamless) transition forward, but if the user moves backward a few
++	 * versions, then we really can't help them.
++	 */
++	if (g_settings_get_boolean (settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY)) {
++		edge_relativity = PANEL_EDGE_END;
++		g_settings_set_enum (settings, PANEL_OBJECT_RELATIVE_TO_EDGE_KEY, edge_relativity);
++	}
++
++
+ 	mate_panel_applet_queue_applet_to_load (id,
+ 					   object_type,
+ 					   toplevel_id,
+ 					   position,
+-					   right_stick,
++					   edge_relativity,
+ 					   locked);
+ 
+ 	g_free (toplevel_id);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-profile.h mate-panel-1.26.2-patched/mate-panel/panel-profile.h
+--- mate-panel-1.26.2-original/mate-panel/panel-profile.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-profile.h	2022-08-11 22:17:43.528181973 -0400
+@@ -52,23 +52,21 @@ gboolean    panel_profile_get_enable_pro
+ gboolean    panel_profile_get_enable_autocompletion (void);
+ 
+ 
+-void           panel_profile_add_to_list            (PanelGSettingsKeyType  type,
+-						     const char        *id);
+-void           panel_profile_remove_from_list       (PanelGSettingsKeyType  type,
+-						     const char        *id);
++void           panel_profile_add_to_list            (PanelGSettingsKeyType      type,
++						     const char                *id);
++void           panel_profile_remove_from_list       (PanelGSettingsKeyType      type,
++						     const char                *id);
+ gboolean       panel_profile_id_lists_are_writable  (void);
+-void           panel_profile_create_toplevel        (GdkScreen         *screen);
+-PanelToplevel *panel_profile_load_toplevel          (const char        *toplevel_id);
+-void           panel_profile_delete_toplevel        (PanelToplevel     *toplevel);
+-char          *panel_profile_prepare_object         (PanelObjectType    object_type,
+-						     PanelToplevel     *toplevel,
+-						     int                position,
+-						     gboolean           right_stick);
+-char          *panel_profile_prepare_object_with_id (PanelObjectType    object_type,
+-						     const char        *toplevel_id,
+-						     int                position,
+-						     gboolean           right_stick);
+-void           panel_profile_delete_object          (AppletInfo        *applet_info);
++void           panel_profile_create_toplevel        (GdkScreen                 *screen);
++PanelToplevel *panel_profile_load_toplevel          (const char                *toplevel_id);
++void           panel_profile_delete_toplevel        (PanelToplevel             *toplevel);
++char          *panel_profile_prepare_object         (PanelObjectType            object_type,
++						     PanelToplevel             *toplevel,
++						     int                        position);
++char          *panel_profile_prepare_object_with_id (PanelObjectType            object_type,
++						     const char                *toplevel_id,
++						     int                        position);
++void           panel_profile_delete_object          (AppletInfo                *applet_info);
+ 
+ gboolean    panel_profile_key_is_writable            (PanelToplevel *toplevel,
+ 						      gchar         *key);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-schemas.h mate-panel-1.26.2-patched/mate-panel/panel-schemas.h
+--- mate-panel-1.26.2-original/mate-panel/panel-schemas.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-schemas.h	2022-08-11 22:17:43.532181973 -0400
+@@ -47,6 +47,7 @@
+ #define PANEL_OBJECT_TOPLEVEL_ID_KEY         "toplevel-id"
+ #define PANEL_OBJECT_POSITION_KEY            "position"
+ #define PANEL_OBJECT_PANEL_RIGHT_STICK_KEY   "panel-right-stick"
++#define PANEL_OBJECT_RELATIVE_TO_EDGE_KEY    "relative-to-edge"
+ #define PANEL_OBJECT_LOCKED_KEY              "locked"
+ #define PANEL_OBJECT_APPLET_IID_KEY          "applet-iid"
+ #define PANEL_OBJECT_ATTACHED_TOPLEVEL_ID_KEY "attached-toplevel-id"
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-separator.c mate-panel-1.26.2-patched/mate-panel/panel-separator.c
+--- mate-panel-1.26.2-original/mate-panel/panel-separator.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-separator.c	2022-08-11 22:17:43.532181973 -0400
+@@ -263,7 +263,7 @@ panel_separator_create (PanelToplevel *t
+ 	char *id;
+ 
+ 	id = panel_profile_prepare_object (PANEL_OBJECT_SEPARATOR,
+-					   toplevel, position, FALSE);
++					   toplevel, position);
+ 	panel_profile_add_to_list (PANEL_GSETTINGS_OBJECTS, id);
+ 	g_free (id);
+ }
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-toplevel.c mate-panel-1.26.2-patched/mate-panel/panel-toplevel.c
+--- mate-panel-1.26.2-original/mate-panel/panel-toplevel.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-toplevel.c	2022-08-11 22:17:43.532181973 -0400
+@@ -2891,8 +2891,8 @@ panel_toplevel_move_resize_window (Panel
+ {
+ 	GtkWidget *widget;
+ 
+-	GList *list;
+-	gboolean stick;
++/*	GList *list;
++	PanelObjectEdgeRelativity edge_relativity;*/
+ 
+ 	widget = GTK_WIDGET (toplevel);
+ 
+@@ -2912,30 +2912,6 @@ panel_toplevel_move_resize_window (Panel
+ 		gdk_window_resize (gtk_widget_get_window (widget),
+ 				   toplevel->priv->geometry.width,
+ 				   toplevel->priv->geometry.height);
+-
+-	if (resize || move) {
+-		for (list = toplevel->priv->panel_widget->applet_list; list != NULL; list = g_list_next (list)) {
+-			AppletData *ad = list->data;
+-			const char *id = mate_panel_applet_get_id_by_widget (ad->applet);
+-
+-			if (!id)
+-				return;
+-
+-			AppletInfo *info;
+-			info = mate_panel_applet_get_by_id (id);
+-
+-			stick = g_settings_get_boolean (info->settings, PANEL_OBJECT_PANEL_RIGHT_STICK_KEY);
+-
+-			if (stick) {
+-				int position = g_settings_get_int (info->settings, PANEL_OBJECT_POSITION_KEY);
+-				if (toplevel->priv->orientation & PANEL_HORIZONTAL_MASK) {
+-					ad->pos = toplevel->priv->geometry.width - position;
+-				} else {
+-					ad->pos = toplevel->priv->geometry.height - position;
+-				}
+-			}
+-		}
+-	}
+ }
+ 
+ static void
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-widget.c mate-panel-1.26.2-patched/mate-panel/panel-widget.c
+--- mate-panel-1.26.2-original/mate-panel/panel-widget.c	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-widget.c	2022-08-12 13:48:33.828200209 -0400
+@@ -30,8 +30,11 @@
+ #include "panel-globals.h"
+ #include "panel-profile.h"
+ #include "panel-lockdown.h"
++#include "panel-schemas.h"
+ 
+-#define MOVE_INCREMENT 1
++#define MOVE_INCREMENT            1
++/* The following was originally from panel-toplevel.c */
++#define SNAP_TOLERANCE_FACTOR     6
+ 
+ typedef enum {
+ 	PANEL_SWITCH_MOVE = 0,
+@@ -624,36 +627,89 @@ get_applet_list_pos (PanelWidget *panel,
+ 	return NULL;
+ }
+ 
+-/*tells us if an applet is "stuck" on the right side*/
+-int
+-panel_widget_is_applet_stuck (PanelWidget *panel_widget,
+-			      GtkWidget   *widget)
+-{
+-	AppletData *applet;
++/*
++ * This function determines whether the given panel applet should be positioned
++ * relative to the center or end of the panel; that is, whether the applet
++ * is part of a contiguous group of other applets, one of which touches the
++ * center or end of the panel.
++ */
++PanelObjectEdgeRelativity
++panel_widget_determine_applet_edge_relativity (PanelWidget *panel_widget,
++					       GtkWidget   *widget)
++{
++	AppletData *applet_in_question;
++	gboolean    applet_is_centered = FALSE;
++
++	g_return_val_if_fail (PANEL_IS_WIDGET (panel_widget), PANEL_EDGE_START);
++	g_return_val_if_fail (GTK_IS_WIDGET (widget), PANEL_EDGE_START);
++
++	applet_in_question = g_object_get_data (G_OBJECT (widget), MATE_PANEL_APPLET_DATA);
++	if (applet_in_question) {
++		GList      *applet_list, *l;
++		AppletData *applet;
++		int         start_pos, end_pos;
++
++		applet_list = g_list_find (panel_widget->applet_list, applet_in_question);
++		start_pos = applet_in_question->constrained;
++		end_pos = applet_in_question->constrained;
+ 
+-	g_return_val_if_fail (PANEL_IS_WIDGET (panel_widget), FALSE);
+-	g_return_val_if_fail (GTK_IS_WIDGET (widget), FALSE);
++		/*
++		 * Start by moving towards the start of the panel, checking
++		 * whether any applets lie on the panel's center.
++		 */
++		for (l = applet_list; l; l = l->prev)
++		{
++			applet = l->data;
+ 
+-	applet = g_object_get_data (G_OBJECT (widget), MATE_PANEL_APPLET_DATA);
+-	if (applet) {
+-		GList *applet_list, *l;
+-		int    end_pos = -1;
++			if (applet->constrained + applet->cells < end_pos)
++				break;
+ 
+-		applet_list = g_list_find (panel_widget->applet_list, applet);
++			if (applet->constrained <= panel_widget->size/2 &&
++			    applet->constrained + applet->cells > panel_widget->size/2)
++				applet_is_centered = TRUE;
++
++			end_pos = applet->constrained;
++			if (end_pos <= 0)
++				/*
++				 * If the applet in question is part of a line
++				 * of contiguous applets, the first of which
++				 * touches the start of the panel, then don't
++				 * center this applet under any circumstances.
++				 */
++				return PANEL_EDGE_START;
++		}
+ 
+-		for (l = applet_list; l; l = l->next) {
++		/*
++		 * Now move towards the panel's end, looking for applets that
++		 * cross the center of the panel.
++		 */
++		for (l = applet_list; l; l = l->next)
++		{
+ 			applet = l->data;
+ 
+-			if (end_pos != -1 && applet->pos != end_pos)
++			if (applet->constrained > start_pos)
+ 				break;
+ 
+-			end_pos = applet->pos + applet->cells;
+-			if (end_pos >= panel_widget->size)
+-				return TRUE;
++			if (applet->constrained <= panel_widget->size/2 &&
++			    applet->constrained + applet->cells > panel_widget->size/2)
++				applet_is_centered = TRUE;
++
++			start_pos += applet->cells;
++			if (start_pos >= panel_widget->size)
++				/*
++				 * If the applet in question is part of a line
++				 * of contiguous applets, the last of which
++				 * touches the end of the panel, then the
++				 * applet is actually end-relative.
++				 */
++				return PANEL_EDGE_END;
+ 		}
+ 	}
+ 
+-	return FALSE;
++	if (applet_is_centered)
++		return PANEL_EDGE_CENTER;
++
++	return PANEL_EDGE_START;
+ }
+ 
+ static int
+@@ -677,6 +733,24 @@ get_size_from_hints (AppletData *ad, int
+ 	return MAX (cells, ad->min_cells);
+ }
+ 
++/*
++ * A utility function to adjust an applet's position by its allocated size,
++ * if the applet is end-relative or centered.
++ */
++static void
++adjust_applet_position (PanelWidget *panel,
++			AppletData  *ad)
++{
++	PanelObjectEdgeRelativity edge_relativity;
++
++	edge_relativity = panel_widget_determine_applet_edge_relativity (panel, ad->applet);
++
++	if (edge_relativity == PANEL_EDGE_CENTER)
++		ad->pos += ad->cells/2;
++	else if (edge_relativity == PANEL_EDGE_END)
++		ad->pos += ad->cells;
++}
++
+ static void
+ panel_widget_jump_applet_right (PanelWidget *panel,
+ 				GList       *list,
+@@ -706,6 +780,7 @@ panel_widget_jump_applet_right (PanelWid
+ 
+  jump_right:
+ 	ad->pos = ad->constrained = pos;
++	adjust_applet_position (panel, ad);
+ 	panel->applet_list = g_list_remove_link (panel->applet_list, list);
+ 	panel->applet_list = panel_g_list_insert_before (panel->applet_list, next, list);
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+@@ -730,6 +805,7 @@ panel_widget_switch_applet_right (PanelW
+ 
+ 	if (!nad || nad->constrained >= ad->constrained + ad->min_cells + MOVE_INCREMENT) {
+ 		ad->pos = ad->constrained += MOVE_INCREMENT;
++		adjust_applet_position (panel, ad);
+ 		gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 		emit_applet_moved (panel, ad);
+ 		return;
+@@ -745,6 +821,8 @@ panel_widget_switch_applet_right (PanelW
+ 
+ 	nad->constrained = nad->pos = ad->constrained;
+ 	ad->constrained = ad->pos = ad->constrained + nad->min_cells;
++	adjust_applet_position (panel, nad);
++	adjust_applet_position (panel, ad);
+ 	panel->applet_list = panel_g_list_swap_next (panel->applet_list, list);
+ 
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+@@ -782,6 +860,7 @@ panel_widget_jump_applet_left (PanelWidg
+ 
+  jump_left:
+ 	ad->pos = ad->constrained = pos;
++	adjust_applet_position (panel, ad);
+ 	panel->applet_list = g_list_remove_link (panel->applet_list, list);
+ 	panel->applet_list = panel_g_list_insert_after (panel->applet_list, prev, list);
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+@@ -804,6 +883,7 @@ panel_widget_switch_applet_left (PanelWi
+ 
+ 	if (!pad || pad->constrained + pad->min_cells <= ad->constrained - MOVE_INCREMENT) {
+ 		ad->pos = ad->constrained -= MOVE_INCREMENT;
++		adjust_applet_position (panel, ad);
+ 		gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 		emit_applet_moved (panel, ad);
+ 		return;
+@@ -819,6 +899,8 @@ panel_widget_switch_applet_left (PanelWi
+ 
+ 	ad->constrained = ad->pos = pad->constrained;
+ 	pad->constrained = pad->pos = ad->constrained + ad->min_cells;
++	adjust_applet_position (panel, ad);
++	adjust_applet_position (panel, pad);
+ 	panel->applet_list = panel_g_list_swap_prev (panel->applet_list, list);
+ 
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+@@ -1061,6 +1143,7 @@ panel_widget_push_applet_right (PanelWid
+ 
+ 	if (!nad || nad->constrained >= ad->constrained + ad->min_cells + push) {
+ 		ad->pos = ad->constrained += push;
++		adjust_applet_position (panel, ad);
+ 		gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 		emit_applet_moved (panel, ad);
+ 		return TRUE;
+@@ -1072,6 +1155,7 @@ panel_widget_push_applet_right (PanelWid
+ 		return FALSE;
+ 
+ 	ad->pos = ad->constrained += push;;
++	adjust_applet_position (panel, ad);
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 	emit_applet_moved (panel, ad);
+ 
+@@ -1100,6 +1184,7 @@ panel_widget_push_applet_left (PanelWidg
+ 
+ 	if (!pad || pad->constrained + pad->min_cells <= ad->constrained - push) {
+ 		ad->pos = ad->constrained -= push;
++		adjust_applet_position (panel, ad);
+ 		gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 		emit_applet_moved (panel, ad);
+ 		return TRUE;
+@@ -1111,6 +1196,7 @@ panel_widget_push_applet_left (PanelWidg
+ 		return FALSE;
+ 
+ 	ad->pos = ad->constrained -= push;
++	adjust_applet_position (panel, ad);
+ 	gtk_widget_queue_resize (GTK_WIDGET (panel));
+ 	emit_applet_moved (panel, ad);
+ 
+@@ -1154,46 +1240,6 @@ panel_widget_push_move (PanelWidget *pan
+ }
+ 
+ 
+-/*this is a special function and may fail if called improperly, it works
+-only under special circumstance when we know there is nothing from
+-old_size to panel->size*/
+-static void
+-panel_widget_right_stick(PanelWidget *panel,int old_size)
+-{
+-	int i,pos;
+-	GList *list,*prev;
+-	AppletData *ad;
+-
+-	g_return_if_fail(PANEL_IS_WIDGET(panel));
+-	g_return_if_fail(old_size>=0);
+-
+-	if(old_size>=panel->size ||
+-	   panel->packed)
+-	   	return;
+-
+-	list = get_applet_list_pos(panel,old_size-1);
+-
+-	if(!list)
+-		return;
+-
+-	pos = panel->size-1;
+-
+-	ad = list->data;
+-	do {
+-		i = ad->pos;
+-		ad->pos = ad->constrained = pos--;
+-		ad->cells = 1;
+-		prev = list;
+-		list = g_list_previous(list);
+-		if(!list)
+-			break;
+-		ad = list->data;
+-	} while(ad->pos + ad->cells == i);
+-
+-	for (list = prev; list; list = list->next)
+-		emit_applet_moved (panel, list->data);
+-}
+-
+ static void
+ panel_widget_get_preferred_size(GtkWidget	     *widget,
+ 				GtkRequisition *minimum_size,
+@@ -1367,7 +1413,6 @@ panel_widget_size_allocate(GtkWidget *wi
+ 	PanelWidget *panel;
+ 	GList *list;
+ 	int i;
+-	int old_size;
+ 	gboolean ltr;
+ 
+ 	g_return_if_fail(PANEL_IS_WIDGET(widget));
+@@ -1375,7 +1420,6 @@ panel_widget_size_allocate(GtkWidget *wi
+ 
+ 	panel = PANEL_WIDGET(widget);
+ 
+-	old_size = panel->size;
+ 	ltr = gtk_widget_get_direction (widget) == GTK_TEXT_DIR_LTR;
+ 
+ 	gtk_widget_set_allocation (widget, allocation);
+@@ -1390,8 +1434,6 @@ panel_widget_size_allocate(GtkWidget *wi
+ 		panel->size = allocation->width;
+ 	else
+ 		panel->size = allocation->height;
+-	if(old_size<panel->size)
+-		panel_widget_right_stick(panel,old_size);
+ 
+ 	if (panel->packed) {
+ 		/* we're assuming the order is the same as the one that was
+@@ -1448,13 +1490,30 @@ panel_widget_size_allocate(GtkWidget *wi
+ 
+ 	} else { /*not packed*/
+ 
+-		/* First make sure there's enough room on the left */
++		/*
++		 * First, recalculate the ideal position for each applet on the
++		 * panel, since the panel changed size, and the position of
++		 * end-relative and center-relative applets depends on the
++		 * exact size of the panel.
++		 *
++		 * However, if some applet uses a large amount of space on the
++		 * panel, it's possible that the ideal applet positions cannot
++		 * be attained, unless of course panel applets were to overlap.
++		 * Since we don't want any panel applets to overlap, shift any
++		 * following applets further over to the right as much as
++		 * necessary.
++		 */
++
+ 		i = 0;
+-		for (list = panel->applet_list;
+-		     list != NULL;
+-		     list = g_list_next (list)) {
++		for (list = panel->applet_list; list; list = list->next)
++		{
+ 			AppletData *ad = list->data;
+ 			GtkRequisition chreq;
++			const char *id;
++			AppletInfo *info;
++			int position = ad->pos;
++			PanelObjectEdgeRelativity edge_relativity = PANEL_EDGE_START;
++			gboolean right_stuck = FALSE;
+ 
+ 			gtk_widget_get_preferred_size (ad->applet, &chreq, NULL);
+ 
+@@ -1470,15 +1529,144 @@ panel_widget_size_allocate(GtkWidget *wi
+ 				ad->min_cells = ad->size_hints [ad->size_hints_len - 1];
+ 			}
+ 
+-			ad->constrained = ad->pos;
++			id = mate_panel_applet_get_id_by_widget (ad->applet);
++			if (id)
++			{
++				info = mate_panel_applet_get_by_id (id);
++				position = g_settings_get_int (info->settings,
++							       PANEL_OBJECT_POSITION_KEY);
++				edge_relativity = g_settings_get_enum (info->settings,
++								       PANEL_OBJECT_RELATIVE_TO_EDGE_KEY);
++				right_stuck = g_settings_get_boolean (info->settings,
++								      PANEL_OBJECT_PANEL_RIGHT_STICK_KEY);
++			}
++
++			/*
++			 * Do not attempt to re-position the applet if it is
++			 * currently being dragged or otherwise moved by the
++			 * user; otherwise, we'll immediately undo the user's
++			 * last move and thus thwart all the user's attempts
++			 * to move the applet!
++			 */
++			if (ad != panel->currently_dragged_applet)
++			{
++				if (edge_relativity == PANEL_EDGE_CENTER)
++				{
++					ad->pos = panel->size/2 + position;
++					ad->constrained = ad->pos - ad->min_cells/2;
++				}
++				else if (edge_relativity == PANEL_EDGE_END)
++				{
++					ad->pos = panel->size - position;
++					/*
++					 * If the `panel-right-stick` property
++					 * is set on the applet, position the
++					 * left side of the applet relative to
++					 * the right side of the panel, not
++					 * the right side of the applet relative
++					 * to the right side of the panel like
++					 * we'd normally do.  This is a hack for
++					 * better backward compatibility.  See
++					 * the huge comment in the function
++					 * `panel_profile_load_object ()` in
++					 * the file `panel-profile.c` for much,
++					 * much more discussion of this hack.
++					 */
++					if (right_stuck)
++						ad->constrained = ad->pos;
++					else
++						ad->constrained = ad->pos - ad->min_cells;
++				}
++				else
++				{
++					ad->pos = position;
++					ad->constrained = ad->pos;
++				}
++			}
++
++			/*
++			 * Now if the previous applet uses too much room on the
++			 * panel to ideally fit this applet, move this applet
++			 * further over to the right to compensate.
++			 *
++			 * Centered applets are a somewhat different story.
++			 * If the current applet is centered, and the previous
++			 * applet is also centered and has a negative relative
++			 * position (so the previous applet is "left" of
++			 * center), move the *previous* applet over to the
++			 * *left* to compensate.  This way, applets at dead
++			 * center will remain at or near dead center.
++			 */
+ 
+ 			if (ad->constrained < i)
+-				ad->constrained = i;
++			{
++				AppletData *pad = NULL;
++				PanelObjectEdgeRelativity previous_edge_relativity;
+ 
+-			i = ad->constrained + ad->cells;
++				previous_edge_relativity = PANEL_EDGE_START;
++
++				if (list->prev)
++				{
++					pad = list->prev->data;
++					previous_edge_relativity = panel_widget_determine_applet_edge_relativity (panel, pad->applet);
++				}
++
++				if (edge_relativity == PANEL_EDGE_CENTER &&
++				    pad &&
++				    previous_edge_relativity == PANEL_EDGE_CENTER &&
++				    pad->constrained + pad->min_cells/2 < panel->size/2)
++					pad->constrained = ad->constrained - pad->min_cells;
++				else
++					ad->constrained = i;
++			}
++
++			i = ad->constrained + ad->min_cells;
+ 		}
+ 
+-		/* Now expand from the right */
++		/*
++		 * Now step through the list of panel applets backwards --
++		 * from the end of the panel to the start -- and if an applet
++		 * doesn't fit on the panel, push it closer to the start
++		 * (left/top) of the panel so that everything fits.
++		 *
++		 * Far more importantly, though, this is where expanding
++		 * applets are dealt with.  For applets which are positioned
++		 * relative to the start of the panel (and applets which are
++		 * end-relative but right-stuck for backward compatibility),
++		 * the applet's positioning reference point is the start of
++		 * the applet.  Therefore, expand the applet towards the end
++		 * (right/bottom) of the panel.
++		 *
++		 * If the applet is end-relative (and is not right-stuck),
++		 * the applet's position is relative to the end of the applet,
++		 * so the user expects that if the applet is going to expand,
++		 * the applet should expand towards the start of the panel
++		 * (in other words, the end-relative position of the applet
++		 * should not change when the applet is expanded).  Not only
++		 * does the applet's size change, but so does the applet's
++		 * actual position on the panel (ad->constrained).
++		 *
++		 * If the applet is center-relative, the applet's position is
++		 * relative to the center of the applet, and thus the center
++		 * of the applet should not move; the applet should grow
++		 * equally in both directions so that the applet stays truly
++		 * centered.  Look for empty space on the panel before
++		 * (to the left/above) and after (to the right/below) the
++		 * applet, and increase the applet's allocation by double the
++		 * smaller of the two figures.  So if there's 18px of empty
++		 * space immediately to the left and 14px of empty space to
++		 * the right, increase the applet's allocation by 2*14px, or
++		 * 28px.  On top of that, move the applet's actual position
++		 * towards the start of the panel by 14px so that the applet
++		 * remains totally centered.
++		 *
++		 * Once the number of cells has been expanded, use the
++		 * applet's size hints (if any) to modify the final allocation.
++		 * Only once the size hints have been consulted (and the cell
++		 * allocation thus potentially adjusted once again) does the
++		 * actual ("constrained") position get recalculated, as was
++		 * described above.
++		 */
+ 		i = panel->size;
+ 		for(list = g_list_last(panel->applet_list);
+ 		    list!=NULL;
+@@ -1489,14 +1677,69 @@ panel_widget_size_allocate(GtkWidget *wi
+ 				ad->constrained = MAX (i - ad->min_cells, 0);
+ 
+ 			if (ad->expand_major) {
+-				int cells = (i - ad->constrained) - 1;
++				const char *id;
++				AppletInfo *info;
++				PanelObjectEdgeRelativity edge_relativity = PANEL_EDGE_START;
++				gboolean right_stuck;
++				AppletData *pad;
++				int prior_space;
++				int following_space;
++				int additional_space;
++
++				id = mate_panel_applet_get_id_by_widget (ad->applet);
++				if (id)
++				{
++					info = mate_panel_applet_get_by_id (id);
++					edge_relativity = g_settings_get_enum (info->settings,
++									       PANEL_OBJECT_RELATIVE_TO_EDGE_KEY);
++					right_stuck = g_settings_get_boolean (info->settings,
++									      PANEL_OBJECT_PANEL_RIGHT_STICK_KEY);
++				}
+ 
+-				if (ad->size_hints)
+-					cells = get_size_from_hints (ad, cells);
+-				cells = MAX (cells, ad->min_cells);
+-				cells = MIN (cells, panel->size);
++				prior_space = ad->constrained;
++				if (list->prev)
++				{
++					pad = list->prev->data;
++					prior_space -= pad->constrained + pad->min_cells;
++				}
++
++				following_space = i - (ad->constrained + ad->min_cells);
++
++				/*
++				 * Also, do not attempt to re-position the
++				 * applet if it is currently being dragged or
++				 * otherwise moved by the user; otherwise,
++				 * we'll just interfere with the user's
++				 * attempts to move the applet, and the applet
++				 * will jump in unexpected directions.
++				 */
++
++				if (ad != panel->currently_dragged_applet &&
++				    edge_relativity == PANEL_EDGE_END &&
++				    ! right_stuck)
++					ad->cells += prior_space;
++				else if (ad != panel->currently_dragged_applet &&
++				         edge_relativity == PANEL_EDGE_CENTER)
++				{
++					additional_space = MIN (prior_space, following_space);
++					additional_space = MAX (additional_space, 0);
++					ad->cells += additional_space * 2;
++				}
++				else
++					ad->cells += following_space;
+ 
+-				ad->cells = cells;
++				if (ad->size_hints)
++					ad->cells = get_size_from_hints (ad, ad->cells);
++				ad->cells = MAX (ad->cells, ad->min_cells);
++				ad->cells = MIN (ad->cells, panel->size);
++
++				if (ad != panel->currently_dragged_applet)
++				{
++					if (edge_relativity == PANEL_EDGE_END && ! right_stuck)
++						ad->constrained -= ad->cells - ad->min_cells;
++					else if (edge_relativity == PANEL_EDGE_CENTER)
++						ad->constrained -= (ad->cells - ad->min_cells) / 2;
++				}
+ 			}
+ 
+ 			i = ad->constrained;
+@@ -1766,12 +2009,20 @@ panel_widget_applet_drag_start_no_grab (
+ static void
+ panel_widget_applet_drag_end_no_grab (PanelWidget *panel)
+ {
++	AppletInfo *info;
++
+ 	g_return_if_fail (panel != NULL);
+ 	g_return_if_fail (PANEL_IS_WIDGET (panel));
+ 
+ #ifdef PANEL_WIDGET_DEBUG
+ 	g_message("Ending drag\n");
+ #endif
++
++	/* Immediately save the new position of the applet. */
++	info = g_object_get_data (G_OBJECT (panel->currently_dragged_applet->applet), "applet_info");
++	if (info)
++		mate_panel_applet_save_position (info, info->id, TRUE);
++
+ 	panel->currently_dragged_applet = NULL;
+ 	mate_panel_applet_in_drag = FALSE;
+ 
+@@ -2012,6 +2263,7 @@ panel_widget_nice_move (PanelWidget *pan
+ 		return;
+ 
+ 	ad->pos = ad->constrained = pos;
++	adjust_applet_position (panel, ad);
+ 
+ 	panel->applet_list =
+ 		panel_g_list_resort_item (panel->applet_list, ad,
+@@ -2037,6 +2289,10 @@ panel_widget_applet_move_to_cursor (Pane
+ 	GSList *forb;
+ 	GdkModifierType mods;
+ 	AppletData *ad;
++	GtkSettings *settings;
++	int drag_threshold;
++	int absolute_moveby;
++	int centered_applet_position;
+ 
+ 	g_return_if_fail(PANEL_IS_WIDGET(panel));
+ 
+@@ -2105,16 +2361,51 @@ panel_widget_applet_move_to_cursor (Pane
+ 			movement = PANEL_FREE_MOVE;
+ 	}
+ 
++	moveby = panel_widget_get_moveby (panel, pos, ad->drag_off);
++
++	/*
++	 * If the applet is currently positioned at the dead center of the
++	 * panel, or if the user moved the mouse across the center of the
++	 * panel (but not farther from the center than the drag-and-drop
++	 * threshold times a specific constant), make the applet "stick" to
++	 * the center of the panel until the user tries to drag the applet far
++	 * away from the center again.  This way, the user can move an applet
++	 * to the center of the panel without needing superhuman muscle
++	 * control to get the applet perfectly centered.
++	 */
++	settings = gtk_widget_get_settings (GTK_WIDGET (panel));
++	g_object_get (G_OBJECT (settings),
++		      "gtk-dnd-drag-threshold", &drag_threshold,
++		      NULL);
++
++	centered_applet_position = panel->size/2 - ad->cells/2;
++
++	if ((moveby < 0 && pos > centered_applet_position &&
++	     pos+moveby <= centered_applet_position &&
++	     pos+moveby >= centered_applet_position - drag_threshold*SNAP_TOLERANCE_FACTOR) ||
++	    (moveby > 0 && pos < centered_applet_position &&
++	     pos+moveby >= centered_applet_position &&
++	     pos+moveby <= centered_applet_position + drag_threshold*SNAP_TOLERANCE_FACTOR))
++		moveby = centered_applet_position - pos;
++	else if (pos == centered_applet_position)
++	{
++		if (moveby < 0)
++			absolute_moveby = -moveby;
++		else
++			absolute_moveby = moveby;
++
++		if (absolute_moveby < drag_threshold*SNAP_TOLERANCE_FACTOR)
++			return;
++	}
++
+ 	switch (movement) {
+ 	case PANEL_SWITCH_MOVE:
+-		moveby = panel_widget_get_moveby (panel, pos, ad->drag_off);
+ 		panel_widget_switch_move (panel, ad, moveby);
+ 		break;
+ 	case PANEL_FREE_MOVE:
+ 		panel_widget_nice_move (panel, ad, panel_widget_get_cursorloc (panel));
+ 		break;
+ 	case PANEL_PUSH_MOVE:
+-		moveby = panel_widget_get_moveby (panel, pos, ad->drag_off);
+ 		panel_widget_push_move (panel, ad, moveby);
+ 		break;
+ 	}
+@@ -2587,6 +2878,7 @@ panel_widget_reparent (PanelWidget *old_
+ 
+ 	if (info && info->type == PANEL_OBJECT_APPLET)
+ 		mate_panel_applet_frame_set_panel (MATE_PANEL_APPLET_FRAME (ad->applet), new_panel);
++	adjust_applet_position (new_panel, ad);
+ 
+ 	if (gtk_widget_get_can_focus (GTK_WIDGET (new_panel)))
+ 		gtk_widget_set_can_focus (GTK_WIDGET (new_panel), FALSE);
+diff -uprN mate-panel-1.26.2-original/mate-panel/panel-widget.h mate-panel-1.26.2-patched/mate-panel/panel-widget.h
+--- mate-panel-1.26.2-original/mate-panel/panel-widget.h	2022-01-26 10:27:16.000000000 -0500
++++ mate-panel-1.26.2-patched/mate-panel/panel-widget.h	2022-08-11 22:17:43.536181974 -0400
+@@ -193,9 +193,9 @@ void		panel_widget_draw_icon		(PanelWidg
+ 						 ButtonWidget *applet);
+ 
+ 
+-/*tells us if an applet is "stuck" on the right side*/
+-int		panel_widget_is_applet_stuck	(PanelWidget *panel,
+-						 GtkWidget *applet);
++/*Tells us to which panel edge (start, center, end) the applet is relative*/
++PanelObjectEdgeRelativity	panel_widget_determine_applet_edge_relativity	(PanelWidget *panel,
++										 GtkWidget *applet);
+ /*get pos of the cursor location in panel coordinates*/
+ int		panel_widget_get_cursorloc	(PanelWidget *panel);
+ 
